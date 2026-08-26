@@ -42,13 +42,17 @@ curl -fsSL --retry 3 "$TEMPLATE_URL" -o "$tmp" \
 
 content=$(base64 < "$tmp" | tr -d '\n')
 
-# An existing file needs its blob sha to update in place.
-sha=$(gh api "repos/${repo}/contents/${WORKFLOW_PATH}?ref=${branch}" -q .sha 2>/dev/null || true)
+# An existing file needs its blob sha to update in place. On a 404, gh prints
+# the error body to stdout, so `-q .sha` would yield the string "null" — the
+# `// empty` filter is what makes a missing file read as genuinely absent.
+sha=$(gh api "repos/${repo}/contents/${WORKFLOW_PATH}?ref=${branch}" \
+        -q '.sha // empty' 2>/dev/null || true)
 
 if [ -n "$sha" ]; then
-  remote=$(gh api "repos/${repo}/contents/${WORKFLOW_PATH}?ref=${branch}" -q .content \
-           | tr -d '\n' | base64 --decode)
-  if [ "$remote" = "$(cat "$tmp")" ]; then
+  # Compare as base64 both sides: no decoding, so no BSD/GNU base64 flag skew.
+  remote=$(gh api "repos/${repo}/contents/${WORKFLOW_PATH}?ref=${branch}" \
+             -q '.content // empty' 2>/dev/null | tr -d '\n' || true)
+  if [ "$remote" = "$content" ]; then
     printf '  workflow already up to date\n'
   else
     gh api --method PUT "repos/${repo}/contents/${WORKFLOW_PATH}" \
