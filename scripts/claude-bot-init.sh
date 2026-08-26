@@ -7,8 +7,13 @@
 # Writes .github/workflows/claude.yml from the canonical template in
 # edward-sia/.github, then makes sure CLAUDE_CODE_OAUTH_TOKEN is set.
 #
-# The review rubric is deliberately NOT installed. The workflow fetches it
+# The review rubric is deliberately NOT installed. The workflow downloads it
 # from edward-sia/.github at run time, so it stays a single source of truth.
+#
+# This pushes over git rather than the contents API on purpose. Writing a file
+# under .github/workflows/ through the API needs the `workflow` OAuth scope,
+# which `gh auth login` does not grant by default — and GitHub reports the
+# refusal as a bare 404. A git push carries no such restriction.
 
 set -euo pipefail
 
@@ -20,6 +25,7 @@ SECRET_NAME="CLAUDE_CODE_OAUTH_TOKEN"
 die() { printf 'claude-bot-init: %s\n' "$*" >&2; exit 1; }
 
 command -v gh   >/dev/null 2>&1 || die "gh is required but not installed"
+command -v git  >/dev/null 2>&1 || die "git is required but not installed"
 command -v curl >/dev/null 2>&1 || die "curl is required but not installed"
 
 repo="${1:-}"
@@ -28,43 +34,56 @@ if [ -z "$repo" ]; then
     || die "not inside a GitHub repo — pass one explicitly: claude-bot-init owner/repo"
 fi
 
-gh api "repos/${repo}" >/dev/null 2>&1 || die "cannot access repo '${repo}'"
+gh api "repos/${repo}" --silent >/dev/null 2>&1 || die "cannot access repo '${repo}'"
 branch=$(gh api "repos/${repo}" -q .default_branch)
 
 printf '→ %s (default branch: %s)\n' "$repo" "$branch"
 
+work=$(mktemp -d)
+tmpl=$(mktemp)
+trap 'rm -rf "$work" "$tmpl"' EXIT
+
 # --- 1. workflow file -------------------------------------------------------
-tmp=$(mktemp)
-trap 'rm -f "$tmp"' EXIT
-curl -fsSL --retry 3 "$TEMPLATE_URL" -o "$tmp" \
+# Cache-bust: raw.githubusercontent.com serves with max-age=300, so a template
+# edited in the last five minutes would otherwise install stale.
+curl -fsSL --retry 3 -H 'Cache-Control: no-cache' \
+  "${TEMPLATE_URL}?t=$(date +%s)" -o "$tmpl" \
   || die "could not fetch the workflow template from ${TEMPLATE_URL}"
-[ -s "$tmp" ] || die "fetched workflow template is empty"
+[ -s "$tmpl" ] || die "fetched workflow template is empty"
 
-content=$(base64 < "$tmp" | tr -d '\n')
+gh repo clone "$repo" "$work/repo" -- --depth 1 --branch "$branch" --quiet 2>/dev/null \
+  || die "could not clone ${repo}"
 
-# An existing file needs its blob sha to update in place. On a 404, gh prints
-# the error body to stdout, so `-q .sha` would yield the string "null" — the
-# `// empty` filter is what makes a missing file read as genuinely absent.
-sha=$(gh api "repos/${repo}/contents/${WORKFLOW_PATH}?ref=${branch}" \
-        -q '.sha // empty' 2>/dev/null || true)
-
-if [ -n "$sha" ]; then
-  # Compare as base64 both sides: no decoding, so no BSD/GNU base64 flag skew.
-  remote=$(gh api "repos/${repo}/contents/${WORKFLOW_PATH}?ref=${branch}" \
-             -q '.content // empty' 2>/dev/null | tr -d '\n' || true)
-  if [ "$remote" = "$content" ]; then
-    printf '  workflow already up to date\n'
-  else
-    gh api --method PUT "repos/${repo}/contents/${WORKFLOW_PATH}" \
-      -f message="ci: update the on-demand @claude bot workflow" \
-      -f content="$content" -f sha="$sha" -f branch="$branch" >/dev/null
-    printf '  workflow updated\n'
-  fi
+dest="$work/repo/${WORKFLOW_PATH}"
+if [ -f "$dest" ] && cmp -s "$tmpl" "$dest"; then
+  printf '  workflow already up to date\n'
 else
-  gh api --method PUT "repos/${repo}/contents/${WORKFLOW_PATH}" \
-    -f message="ci: add the on-demand @claude bot" \
-    -f content="$content" -f branch="$branch" >/dev/null
-  printf '  workflow added\n'
+  if [ -f "$dest" ]; then verb=update; done_msg="workflow updated"
+  else                    verb=add;    done_msg="workflow added"; fi
+
+  mkdir -p "$(dirname "$dest")"
+  cp "$tmpl" "$dest"
+  git -C "$work/repo" add "$WORKFLOW_PATH"
+  git -C "$work/repo" commit -q -m "ci: ${verb} the on-demand @claude bot"
+
+  # A repo owner can push straight through their own branch protection. Doing
+  # that silently would be the wrong default, so open a PR instead and let the
+  # repo's own rules decide when it lands.
+  protected=$(gh api "repos/${repo}/branches/${branch}" -q .protected 2>/dev/null || echo false)
+  if [ "$protected" = "true" ]; then
+    head="claude-bot-init"
+    git -C "$work/repo" branch -m "$head"
+    git -C "$work/repo" push -q -u origin "$head" \
+      || die "could not push branch ${head} to ${repo}"
+    url=$(gh pr create -R "$repo" --base "$branch" --head "$head" \
+            --title "ci: ${verb} the on-demand @claude bot" \
+            --body "Adds the shared \`@claude\` bot workflow. The review rubric is not committed here — the workflow downloads it from [${TEMPLATE_REPO}](https://github.com/${TEMPLATE_REPO}) at run time." )
+    printf '  %s branch is protected — opened %s\n' "$branch" "$url"
+  else
+    git -C "$work/repo" push -q origin "$branch" \
+      || die "could not push to ${repo} — check your SSH key and write access"
+    printf '  %s\n' "$done_msg"
+  fi
 fi
 
 # --- 2. secret --------------------------------------------------------------
@@ -86,7 +105,7 @@ else
 fi
 
 if [ "$secret_ok" -eq 1 ]; then
-  printf '\u2713 %s ready. Comment on a PR: @claude review this PR per .github/claude-review.md\n' "$repo"
+  printf '✓ %s ready. Comment on a PR: @claude review this PR per .github/claude-review.md\n' "$repo"
 else
   printf '! %s: workflow installed, but the bot will fail until you run:\n' "$repo"
   printf '    gh secret set %s -R %s\n' "$SECRET_NAME" "$repo"

@@ -22,6 +22,10 @@ The workflow file is the part that does not change, so it is a normal copy.
 If the rubric ever moves or is deleted, `curl -f` fails the job. The bot stops
 rather than quietly reviewing against nothing.
 
+**A rubric edit takes up to 5 minutes to reach the runners.**
+`raw.githubusercontent.com` serves with `cache-control: max-age=300`. Nothing
+breaks — a review started inside that window just uses the previous rubric.
+
 ## Adding the bot to a repo
 
 ```bash
@@ -31,6 +35,10 @@ claude-bot-init owner/repo   # or just `claude-bot-init` from inside the repo
 Then comment on any PR:
 
 > @claude review this PR per .github/claude-review.md
+
+If the default branch is protected, the script opens a pull request instead of
+pushing to it. A repo owner can push through their own branch protection, and
+doing that silently would be the wrong default.
 
 ## The one manual step
 
@@ -42,6 +50,15 @@ Generate a token with `claude setup-token`.
 
 The script exits `2` when it installed the workflow but the secret is still
 missing, so a scripted rollout can tell "done" from "done except the token".
+
+## Why the installer pushes over git
+
+Writing a file under `.github/workflows/` through the REST contents API needs
+the `workflow` OAuth scope, which `gh auth login` does not grant by default.
+Without it the API returns a bare `404` that looks like a missing repo. A git
+push over SSH carries no such restriction, so the script clones and pushes.
+
+To use the API path instead, run `gh auth refresh -h github.com -s workflow`.
 
 ## What this repo cannot do
 
