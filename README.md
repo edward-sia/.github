@@ -40,6 +40,9 @@ set on every repo individually. The script prompts for it, or reads it from a
 
 Generate a token with `claude setup-token`.
 
+The script exits `2` when it installed the workflow but the secret is still
+missing, so a scripted rollout can tell "done" from "done except the token".
+
 ## What this repo cannot do
 
 Workflow templates that appear in the Actions tab are an **organization**

@@ -64,15 +64,27 @@ else
 fi
 
 # --- 2. secret --------------------------------------------------------------
-# Secrets are write-only, so an existing one cannot be verified — only listed.
+# Secrets are write-only, so an existing one cannot be read back — only listed.
+secret_ok=0
 if gh secret list -R "$repo" 2>/dev/null | grep -q "^${SECRET_NAME}[[:space:]]"; then
   printf '  %s already set\n' "$SECRET_NAME"
+  secret_ok=1
 elif [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
   printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" | gh secret set "$SECRET_NAME" -R "$repo"
   printf '  %s set from the environment\n' "$SECRET_NAME"
+  secret_ok=1
+elif [ -t 0 ]; then
+  printf '  %s is not set. Paste it now (input is hidden), or Ctrl-C to skip:\n' "$SECRET_NAME"
+  if gh secret set "$SECRET_NAME" -R "$repo"; then secret_ok=1; fi
 else
-  printf '  %s is NOT set. Paste it now (input is hidden), or Ctrl-C to skip:\n' "$SECRET_NAME"
-  gh secret set "$SECRET_NAME" -R "$repo"
+  # No terminal to prompt on. Say so and leave, rather than hanging on stdin.
+  printf '  %s is not set, and there is no terminal to prompt on.\n' "$SECRET_NAME"
 fi
 
-printf '✓ %s ready. Comment on a PR: @claude review this PR per .github/claude-review.md\n' "$repo"
+if [ "$secret_ok" -eq 1 ]; then
+  printf '\u2713 %s ready. Comment on a PR: @claude review this PR per .github/claude-review.md\n' "$repo"
+else
+  printf '! %s: workflow installed, but the bot will fail until you run:\n' "$repo"
+  printf '    gh secret set %s -R %s\n' "$SECRET_NAME" "$repo"
+  exit 2
+fi
