@@ -105,7 +105,7 @@ else
 fi
 
 if [ "$secret_ok" -eq 1 ]; then
-  printf '✓ %s ready. Comment on a PR: @claude review this PR per .github/claude-review.md\n' "$repo"
+  printf '✓ %s ready. Comment on a PR: @claude review this PR\n' "$repo"
 else
   printf '! %s: workflow installed, but the bot will fail until you run:\n' "$repo"
   printf '    gh secret set %s -R %s\n' "$SECRET_NAME" "$repo"

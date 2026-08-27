@@ -3,13 +3,14 @@
 This is the shared review rubric for the on-demand `@claude` bot across all
 `edward-sia` repositories. It lives here only. No repo commits a copy.
 
-Each repo's `.github/workflows/claude.yml` downloads this file to
-`.github/claude-review.md` on the runner before Claude starts, so a change
-here reaches every repo on its next review run with nothing to merge.
+The shared workflow (`.github/workflows/claude-on-demand.yml` in this repo)
+downloads this file into the runner's temp directory before Claude starts and
+points Claude at it, so a change here reaches every repo on its next review
+run with nothing to merge.
 
 Trigger a review from a PR comment with:
 
-> @claude review this PR per .github/claude-review.md
+> @claude review this PR
 
 ---
 
