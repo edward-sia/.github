@@ -30,6 +30,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The action hides Claude's message stream by default, which also hides
+          # whether the rubric below was read. Show it only where the Actions log
+          # is private — the stream carries file contents, diffs and MCP payloads.
+          show_full_output: ${{ github.event.repository.private }}
           claude_args: |
             --model sonnet
             --append-system-prompt "When asked to review a PR, first read ${{ runner.temp }}/claude-review.md and follow it as the review rubric. It is the file review comments may still refer to as .github/claude-review.md."
