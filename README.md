@@ -107,6 +107,74 @@ It exits `2` if the workflow is installed but the secret is still missing, so a
 scripted rollout can tell "done" from "done except the token". Re-run it to
 pick up a changed template.
 
+## Install from an agent
+
+This section is for an agent such as Claude Code that has been told to install
+the bot with no human in the loop. Follow it as written.
+
+**Preconditions.** Check all three before doing anything. If one fails, stop
+and report which one. Do not try to repair it.
+
+1. `gh auth status` exits 0 for github.com, and that account can push to the target repo.
+2. `git` and `curl` are on the PATH.
+3. `CLAUDE_CODE_OAUTH_TOKEN` is set in the environment. You cannot create it. `claude setup-token` needs a browser login, so a human generates it once and stores it where you can read it.
+
+**Install one repo.** Replace `owner/repo`.
+
+```bash
+tmp=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/edward-sia/.github/main/scripts/claude-bot-init.sh -o "$tmp" && bash "$tmp" owner/repo </dev/null; echo "exit=$?"
+```
+
+`</dev/null` closes stdin so the script never waits on a prompt. It takes the
+token from the environment instead.
+
+**Read the exit code.**
+
+| Exit | Meaning | Next step |
+| --- | --- | --- |
+| 0 | The workflow is on the default branch and the secret is set. | Run the verify commands. |
+| 2 | The workflow is installed but the token was not in the environment. | Precondition 3 failed. Report it. |
+| anything else | The script stopped before the workflow landed. | Report the `claude-bot-init:` line from stderr. |
+
+**If the default branch is protected.** The script prints a line ending in a
+PR URL, then exits 0 with the workflow on a `claude-bot-init` branch instead of
+the default branch. Merge that PR:
+
+```bash
+gh pr merge <url> --squash --delete-branch
+```
+
+If the merge is refused because the branch needs a review you cannot give,
+report the PR URL and stop. The bot does not work until that PR lands.
+
+**Verify.** Both commands must succeed.
+
+```bash
+gh api repos/owner/repo/contents/.github/workflows/claude.yml --jq .path
+```
+
+```bash
+gh secret list -R owner/repo | grep -q '^CLAUDE_CODE_OAUTH_TOKEN[[:space:]]'
+```
+
+**Every repo at once.** Same preconditions. Archived repos are skipped.
+
+```bash
+tmp=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/edward-sia/.github/main/scripts/claude-bot-init.sh -o "$tmp" && gh repo list edward-sia --limit 200 --no-archived --json nameWithOwner -q '.[].nameWithOwner' | while read -r r; do bash "$tmp" "$r" </dev/null || echo "FAILED $r exit=$?"; done
+```
+
+Report every `FAILED` line and every PR URL the script printed.
+
+**Smoke test.** Only if the repo already has an open PR. Do not open one for
+this.
+
+```bash
+gh pr comment <number> -R owner/repo --body "@claude review this PR"
+```
+
+Within a minute, `gh run list -R owner/repo --workflow "Claude Code" --limit 1`
+shows a new run.
+
 ## When a change takes effect
 
 | You edit | It reaches repos |
