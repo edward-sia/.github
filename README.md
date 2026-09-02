@@ -88,26 +88,7 @@ always runs at 1M.
 The keyword list is one line in `claude-on-demand.yml`. After editing it, run
 `scripts/test-review-profile.sh`.
 
-## How to install it in a repo
-
-You need `gh`, `git`, `curl`, and SSH push access to the repo.
-
-```bash
-claude-bot-init owner/repo
-```
-
-`claude-bot-init` is `scripts/claude-bot-init.sh` from this repo, on your PATH.
-With no argument it targets the repo you are inside. The script:
-
-1. Commits `templates/claude.yml` as `.github/workflows/claude.yml`, or reports it is already up to date.
-2. Pushes to the default branch. If that branch is protected, it opens a PR instead. A repo owner can push through their own branch protection, and doing that silently would be the wrong default.
-3. Sets `CLAUDE_CODE_OAUTH_TOKEN` from an existing secret, your environment, or a prompt, in that order. Generate a token with `claude setup-token`.
-
-It exits `2` if the workflow is installed but the secret is still missing, so a
-scripted rollout can tell "done" from "done except the token". Re-run it to
-pick up a changed template.
-
-## Install from an agent
+## Install with an agent
 
 This section is for an agent such as Claude Code that has been told to install
 the bot with no human in the loop. Follow it as written.
@@ -174,6 +155,25 @@ gh pr comment <number> -R owner/repo --body "@claude review this PR"
 
 Within a minute, `gh run list -R owner/repo --workflow "Claude Code" --limit 1`
 shows a new run.
+
+## Install by hand
+
+You need `gh`, `git`, `curl`, and SSH push access to the repo.
+
+```bash
+claude-bot-init owner/repo
+```
+
+`claude-bot-init` is `scripts/claude-bot-init.sh` from this repo, on your PATH.
+With no argument it targets the repo you are inside. The script:
+
+1. Commits `templates/claude.yml` as `.github/workflows/claude.yml`, or reports it is already up to date.
+2. Pushes to the default branch. If that branch is protected, it opens a PR instead. A repo owner can push through their own branch protection, and doing that silently would be the wrong default.
+3. Sets `CLAUDE_CODE_OAUTH_TOKEN` from an existing secret, your environment, or a prompt, in that order. Generate a token with `claude setup-token`.
+
+It exits `2` if the workflow is installed but the secret is still missing, so a
+scripted rollout can tell "done" from "done except the token". Re-run it to
+pick up a changed template.
 
 ## When a change takes effect
 
