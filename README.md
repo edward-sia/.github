@@ -7,9 +7,10 @@ Shared GitHub configuration for `edward-sia` repositories.
 | Path | What it is | How repos get it |
 | --- | --- | --- |
 | `claude-review.md` | The PR review rubric for the `@claude` bot | Downloaded at run time. Never copied into a repo. |
-| `.github/workflows/claude-on-demand.yml` | The bot's whole job: checkout, rubric fetch, Claude invocation | Referenced at run time (`uses: ...@main`). Never copied into a repo. |
+| `.github/workflows/claude-on-demand.yml` | The bot's whole job: checkout, rubric fetch, model pick, Claude invocation | Referenced at run time (`uses: ...@main`). Never copied into a repo. |
 | `templates/claude.yml` | A thin caller: triggers + `@claude` guard + a `uses:` line | Copied into each repo once, by the script below. |
 | `scripts/claude-bot-init.sh` | Installs the bot into a repo | Run once per repo. |
+| `scripts/test-review-profile.sh` | Checks the comment-to-model step against sample comments | Run locally after editing the keyword list. |
 
 ## Why the bot lives here instead of in each repo
 
@@ -58,6 +59,36 @@ still works — the system prompt tells Claude where that file lives now.
 If the default branch is protected, the script opens a pull request instead of
 pushing to it. A repo owner can push through their own branch protection, and
 doing that silently would be the wrong default.
+
+## Choosing the model from the comment
+
+The comment that triggers the bot also picks the model and the time limit.
+If the comment contains any of these words, as a whole word in any case, the
+run uses Opus:
+
+`opus`, `deep`, `deeply`, `thorough`, `thoroughly`, `widely`, `extensive`,
+`extensively`
+
+Otherwise it uses Sonnet.
+
+| Profile | Model flag | Time limit | Example comment |
+| --- | --- | --- | --- |
+| Opus | `opus[1m]` | 30 minutes | `@claude please review this PR thoroughly` |
+| Sonnet (default) | `sonnet` | 15 minutes | `@claude review this PR` |
+
+Whole-word matching means a comment that mentions "DeepSeek" or
+"thoroughness" still gets Sonnet. The chosen profile shows up as a notice
+annotation on the Actions run.
+
+The Opus profile spells the model `opus[1m]` to keep the 1M-token context
+window. In Claude Code, `sonnet` always runs at 1M, but `opus` runs at 200K
+unless the `[1m]` suffix asks for more. A review of a PR with a few thousand
+changed lines can pass 200K, and the run would start compacting its context
+mid-review.
+
+The keyword list is one line in `claude-on-demand.yml`. After changing it,
+run `scripts/test-review-profile.sh`, which pulls that step out of the
+workflow and runs it against sample comments.
 
 ## The one manual step
 

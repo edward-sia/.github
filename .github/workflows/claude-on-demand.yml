@@ -9,8 +9,7 @@ on:
 jobs:
   claude:
     runs-on: ubuntu-latest
-    # Only guard against a stuck run — the on-demand path has no --max-turns cap.
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -25,9 +24,24 @@ jobs:
             https://raw.githubusercontent.com/edward-sia/.github/main/claude-review.md \
             -o "$RUNNER_TEMP/claude-review.md"
 
+      - name: Pick the review profile from the trigger comment
+        id: profile
+        env:
+          TRIGGER_TEXT: ${{ github.event.comment.body || github.event.review.body }}
+        run: |
+          if grep -Eiqw 'opus|deep|deeply|thorough|thoroughly|widely|extensive|extensively' <<<"$TRIGGER_TEXT"; then
+            model='opus[1m]'; timeout=30
+          else
+            model='sonnet'; timeout=15
+          fi
+          echo "model=$model" >> "$GITHUB_OUTPUT"
+          echo "timeout=$timeout" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Review profile::model=$model, timeout=${timeout}m"
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
+        timeout-minutes: ${{ fromJSON(steps.profile.outputs.timeout) }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # The action hides Claude's message stream by default, which also hides
@@ -35,5 +49,5 @@ jobs:
           # is private — the stream carries file contents, diffs and MCP payloads.
           show_full_output: ${{ github.event.repository.private }}
           claude_args: |
-            --model sonnet
+            --model ${{ steps.profile.outputs.model }}
             --append-system-prompt "When asked to review a PR, first read ${{ runner.temp }}/claude-review.md and follow it as the review rubric. It is the file review comments may still refer to as .github/claude-review.md."
