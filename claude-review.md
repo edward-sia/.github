@@ -1,14 +1,16 @@
 # PR Review Rubric
 
-This is the shared review rubric for the on-demand `@claude` bot across all
-`edward-sia` repositories. It lives here only. No repo commits a copy.
+This is the shared review rubric for the automatic and on-demand `@claude` bot
+across all `edward-sia` repositories. It lives here only. No repo commits a
+copy.
 
 The shared workflow (`.github/workflows/claude-on-demand.yml` in this repo)
 downloads this file into the runner's temp directory before Claude starts and
 points Claude at it, so a change here reaches every repo on its next review
 run with nothing to merge.
 
-Trigger a review from a PR comment with:
+Same-repository pull requests are reviewed when they open. To request or repeat
+a review manually, comment:
 
 > @claude review this PR
 
@@ -31,6 +33,15 @@ The PR description is a set of claims, not facts. For each concrete claim it mak
 3. Report the strongest counterexample that survives your own scrutiny as a finding, citing the claim it contradicts.
 4. If a claim survives a genuine falsification attempt, do not comment on it — surviving scrutiny is not a finding.
 
+## Documentation, Specification, and Plan Reviews
+
+For documentation-only pull requests, validate claims against the repository
+and report inaccuracies, not prose preferences. For files under
+`docs/superpowers/specs/` or `docs/superpowers/plans/`, also check that scope,
+dependencies, rollout steps, and acceptance criteria agree with one another
+and leave no material decision unresolved. Do not invent product requirements
+or implementation details the document did not authorize.
+
 ## Comment Format Standard
 Every comment you post must strictly use the following markdown template:
 
@@ -42,12 +53,17 @@ Every comment you post must strictly use the following markdown template:
 ```
 * **Human Verification Required:** [Specify exactly what the human engineer needs to double-check]
 
+For documentation, specifications, and plans, replace the code block with the
+exact prose or structural edit needed.
+
 ## Allowed Category Prefixes
 * **[BUG]**: Logic errors, edge cases, or potential runtime crashes.
 * **[PERF]**: Inefficient loops, memory leaks, or unnecessary database calls.
 * **[SECURITY]**: Vulnerabilities, exposed secrets, or unsafe data handling.
 * **[CLEAN]**: Readability improvements, dead code removal, or style guide deviations.
 * **[QUESTION]**: Code that requires clarification from the author before it can be validated.
+* **[DOCS]**: Incorrect, incomplete, or contradictory documentation.
+* **[SCOPE]**: A specification or plan has scope leakage, a missing dependency, an unresolved decision, or untestable acceptance criteria.
 
 ## Few-Shot Positive Examples
 

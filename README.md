@@ -1,11 +1,12 @@
 # .github
 
 Shared GitHub configuration for `edward-sia` repositories. Today that is one
-thing: an on-demand `@claude` reviewer for pull requests.
+thing: an automatic and on-demand `@claude` reviewer for pull requests.
 
 ## What it does
 
-Comment on any pull request in an installed repo:
+Every newly opened pull request from a branch in an installed repository is
+reviewed automatically. You can also request or repeat a review with a comment:
 
 > @claude review this PR
 
@@ -31,62 +32,77 @@ no copies to drift.
 | `.github/workflows/claude-on-demand.yml` | The job. Each repo calls it with `uses:`. |
 | `templates/claude.yml` | The caller workflow copied into each repo. |
 | `scripts/claude-bot-init.sh` | Installs the caller and the secret into a repo. |
-| `scripts/test-review-profile.sh` | Checks the model-picking step against sample comments. |
+| `scripts/test-review-profile.sh` | Checks model routing against comments, labels, PR size, and changed paths. |
+| `scripts/test-review-context.sh` | Checks PR metadata retrieval for each supported event shape. |
+| `docs/review-routing.md` | The model-selection policy and its operational limits. |
 
 **In each repo.** Installed once by the script.
 
 | Path | What it is |
 | --- | --- |
-| `.github/workflows/claude.yml` | A copy of the template. Declares the triggers, requires `@claude` in the comment, and calls the shared job. |
+| `.github/workflows/claude.yml` | A copy of the template. Automatically reviews newly opened same-repository PRs and accepts `@claude` requests. |
 | `CLAUDE_CODE_OAUTH_TOKEN` secret | GitHub has no user-level Actions secrets, so every repo needs its own. |
 
 The rubric is never copied into a repo.
 
 ## Who
 
-- Anyone who can comment on an issue or PR can trigger a run. There is no user allow-list.
+- A same-repository PR starts one automatic review when it opens. Anyone who can comment on an issue or PR can also trigger a manual run. There is no user allow-list.
 - Whoever has push access to a repo installs the bot there.
 - Whoever can push to `main` here changes the rubric and the job for every repo.
 
 ## How it is triggered
 
-The caller listens for three events: a comment on an issue or PR, a comment on
-a PR diff, and a submitted PR review. Its job-level `if` requires the text
-`@claude` in the body. Other comments never start a run, so they do not even
-appear as skipped runs.
+The caller listens for a newly opened pull request, a comment on an issue or
+PR, a comment on a PR diff, and a submitted PR review. A newly opened PR from
+the repository starts a review automatically. The other three events require
+`@claude` in the body, so unrelated comments never start a run.
+
+Fork PRs are deliberately skipped. GitHub withholds the OAuth secret from a
+fork-triggered `pull_request` workflow; allowing it through would create a
+failing run instead of a review.
 
 When the guard passes, the shared job:
 
 1. Checks out the repo.
 2. Downloads `claude-review.md` from this repo's `main` into the runner's temp directory.
-3. Picks a model from the trigger comment (next section).
+3. Picks a model from the trigger, pull-request metadata, and changed paths (next section).
 4. Runs `anthropics/claude-code-action` with that model and a system prompt that points at the rubric.
 
 The older phrasing `@claude review this PR per .github/claude-review.md` still
 works. The system prompt tells Claude where that file lives now.
 
-## Picking the model from the comment
+## Picking the review model
 
-If the trigger comment contains any of these words, as a whole word in any
-case, the run uses Opus. Otherwise it uses Sonnet.
-
-`opus`, `deep`, `deeply`, `thorough`, `thoroughly`, `widely`, `extensive`,
-`extensively`
+The router is deterministic and writes its reason to the Actions-run notice.
+It does not use one model to decide whether another should review. The full
+policy is in [`docs/review-routing.md`](docs/review-routing.md).
 
 | Profile | Model flag | Time limit | Example |
 | --- | --- | --- | --- |
-| Opus | `opus[1m]` | 30 min | `@claude review this PR thoroughly` |
-| Sonnet (default) | `sonnet` | 15 min | `@claude review this PR` |
+| Opus | `opus[1m]` | 30 min | An auth change or a Superpowers spec/plan |
+| Sonnet (default) | `sonnet` | 15 min | A normal application or documentation change |
 
-Whole-word matching means "DeepSeek" and "thoroughness" still get Sonnet. The
-chosen profile appears as a notice on the Actions run.
+Priority order: `claude:sonnet` or `claude:opus` labels; an explicit manual
+request containing `opus`, `deep`, `deeply`, `thorough`, `thoroughly`,
+`widely`, `extensive`, or `extensively`; more than 25 changed files or 800
+changed lines; sensitive paths and Superpowers specs/plans; then Sonnet.
+
+Labels affect manual re-reviews immediately. Adding a label after a PR has
+opened does not create a second automatic review; use `@claude review this PR`
+to run the selected override.
 
 The `[1m]` suffix keeps Opus at a 1M-token context window. Without it Opus runs
 at 200K, which a review of a few thousand changed lines can exceed. Sonnet
 always runs at 1M.
 
-The keyword list is one line in `claude-on-demand.yml`. After editing it, run
-`scripts/test-review-profile.sh`.
+After changing the router, run:
+
+```bash
+scripts/test-review-profile.sh
+scripts/test-review-context.sh
+actionlint templates/claude.yml .github/workflows/claude-on-demand.yml
+```
 
 ## Install with an agent
 

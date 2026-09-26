@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the on-demand @claude bot into a repository.
+# Install the automatic and on-demand @claude reviewer into a repository.
 #
 #   claude-bot-init                 # current repo (from cwd)
 #   claude-bot-init owner/repo      # a specific repo
@@ -64,7 +64,7 @@ else
   mkdir -p "$(dirname "$dest")"
   cp "$tmpl" "$dest"
   git -C "$work/repo" add "$WORKFLOW_PATH"
-  git -C "$work/repo" commit -q -m "ci: ${verb} the on-demand @claude bot"
+  git -C "$work/repo" commit -q -m "ci: ${verb} the Claude reviewer"
 
   # A repo owner can push straight through their own branch protection. Doing
   # that silently would be the wrong default, so open a PR instead and let the
@@ -76,8 +76,8 @@ else
     git -C "$work/repo" push -q -u origin "$head" \
       || die "could not push branch ${head} to ${repo}"
     url=$(gh pr create -R "$repo" --base "$branch" --head "$head" \
-            --title "ci: ${verb} the on-demand @claude bot" \
-            --body "Adds the shared \`@claude\` bot workflow. The review rubric is not committed here — the workflow downloads it from [${TEMPLATE_REPO}](https://github.com/${TEMPLATE_REPO}) at run time." )
+            --title "ci: ${verb} the Claude reviewer" \
+            --body "Adds the shared Claude review workflow. The review rubric is not committed here — the workflow downloads it from [${TEMPLATE_REPO}](https://github.com/${TEMPLATE_REPO}) at run time." )
     printf '  %s branch is protected — opened %s\n' "$branch" "$url"
   else
     git -C "$work/repo" push -q origin "$branch" \
@@ -105,7 +105,7 @@ else
 fi
 
 if [ "$secret_ok" -eq 1 ]; then
-  printf '✓ %s ready. Comment on a PR: @claude review this PR\n' "$repo"
+  printf '✓ %s ready. Same-repository PRs review automatically; comment for a manual re-review: @claude review this PR\n' "$repo"
 else
   printf '! %s: workflow installed, but the bot will fail until you run:\n' "$repo"
   printf '    gh secret set %s -R %s\n' "$SECRET_NAME" "$repo"

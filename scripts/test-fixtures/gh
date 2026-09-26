@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+printf '%s\n' "$*" >> "$GH_LOG"
+
+case "$*" in
+  *'/files?per_page=100'*) printf '%s\n' 'src/auth.ts' 'EOF' ;;
+  *) printf '%s\n' '{"labels":[{"name":"claude:opus"}],"changed_files":2,"additions":3,"deletions":5}' ;;
+esac
